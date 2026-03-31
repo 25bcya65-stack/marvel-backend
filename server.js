@@ -75,30 +75,43 @@ app.post('/api/comments', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-// GET comments for a character 
-app.get('/api/comments', async (req, res) => {
+// POST new comment - with better error handling
+app.post('/api/comments', async (req, res) => {
   if (!db) {
+    console.error("❌ Database not initialized");
     return res.status(500).json({ error: 'Database not connected' });
   }
 
-  const { characterName } = req.query;
+  const { characterName, commentText, userName = "Anonymous" } = req.body;
+
+  console.log("Received comment:", { characterName, commentText, userName }); // For debugging
+
+  if (!characterName || !commentText) {
+    return res.status(400).json({ error: 'characterName and commentText are required' });
+  }
 
   try {
-    let query = db.collection('comments');
+    const commentData = {
+      characterName: characterName.trim(),
+      userName: userName.trim(),
+      commentText: commentText.trim(),
+      timestamp: new Date().toISOString()
+    };
+
+    const docRef = await db.collection('comments').add(commentData);
     
-    if (characterName) {
-      query = query.where('characterName', '==', characterName);
-    }
+    console.log(`✅ Comment saved successfully with ID: ${docRef.id}`);
     
-    const snapshot = await query.get();
-    const comments = snapshot.docs.map(doc => ({ 
-      id: doc.id, 
-      ...doc.data() 
-    }));
-    
-    res.json(comments);
+    res.status(201).json({ 
+      success: true, 
+      id: docRef.id, 
+      message: 'Comment saved in Firebase!' 
+    });
   } catch (error) {
-    console.error('Comments error:', error.message);
-    res.status(500).json({ error: 'Failed to fetch comments' });
+    console.error('❌ Error saving comment:', error.message);
+    res.status(500).json({ 
+      error: 'Failed to save comment in Firebase', 
+      details: error.message 
+    });
   }
 });
