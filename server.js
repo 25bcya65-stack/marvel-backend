@@ -7,21 +7,17 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json());   // Important: to read JSON from frontend
 
-// Welcome page
+// Welcome route
 app.get('/', (req, res) => {
-  res.send(`
-    <h1>✅ Marvel Backend is Running!</h1>
-    <p><strong>Test API:</strong> <a href="/api/characters">/api/characters</a></p>
-  `);
+  res.send('<h1>✅ Marvel Backend is Running! Try /api/characters or POST to /api/comments</h1>');
 });
 
-// Firebase with improved private key fix
+// Firebase setup with improved private key handling
 let db;
 try {
   let privateKey = process.env.FIREBASE_PRIVATE_KEY || '';
-  // Fix common newline and formatting issues
   privateKey = privateKey.replace(/\\n/g, '\n').trim();
 
   const serviceAccount = {
@@ -35,26 +31,46 @@ try {
   });
 
   db = admin.firestore();
-  console.log('✅ Firebase Admin SDK connected successfully');
+  console.log('✅ Firebase connected successfully');
 } catch (error) {
   console.error('❌ Firebase init failed:', error.message);
 }
 
-// API to get characters from Firebase
+// GET all characters (existing)
 app.get('/api/characters', async (req, res) => {
-  if (!db) {
-    return res.status(500).json({ error: 'Firebase not connected - check Logs' });
-  }
+  if (!db) return res.status(500).json({ error: 'Database not connected' });
   try {
     const snapshot = await db.collection('characters').get();
-    const characters = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    const characters = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json(characters);
   } catch (error) {
-    console.error('Fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch characters' });
+  }
+});
+
+// NEW: POST a new comment
+app.post('/api/comments', async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'Database not connected' });
+
+  const { characterName, commentText, userName = "Anonymous" } = req.body;
+
+  if (!characterName || !commentText) {
+    return res.status(400).json({ error: 'characterName and commentText are required' });
+  }
+
+  try {
+    const commentData = {
+      characterName,
+      userName,
+      commentText,
+      timestamp: new Date().toISOString()
+    };
+
+    const docRef = await db.collection('comments').add(commentData);
+    res.status(201).json({ success: true, id: docRef.id, message: 'Comment saved successfully!' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to save comment' });
   }
 });
 
