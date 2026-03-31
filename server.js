@@ -75,9 +75,11 @@ app.post('/api/comments', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-// GET comments for a character (Simplified - no orderBy to avoid index error)
+// GET comments for a character 
 app.get('/api/comments', async (req, res) => {
-  if (!db) return res.status(500).json({ error: 'Database not connected' });
+  if (!db) {
+    return res.status(500).json({ error: 'Database not connected' });
+  }
 
   const { characterName } = req.query;
 
@@ -88,7 +90,7 @@ app.get('/api/comments', async (req, res) => {
       query = query.where('characterName', '==', characterName);
     }
     
-    const snapshot = await query.get();   // Removed orderBy for now
+    const snapshot = await query.get();
     const comments = snapshot.docs.map(doc => ({ 
       id: doc.id, 
       ...doc.data() 
@@ -96,7 +98,7 @@ app.get('/api/comments', async (req, res) => {
     
     res.json(comments);
   } catch (error) {
-    console.error('Comments fetch error:', error.message);
+    console.error('Comments error:', error.message);
     res.status(500).json({ error: 'Failed to fetch comments' });
   }
 });
