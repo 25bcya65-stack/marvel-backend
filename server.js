@@ -7,18 +7,20 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());   // Important: to read JSON from frontend
+app.use(express.json());
 
-// Welcome route
-app.get('/', (req, res) => {
-  res.send('<h1>✅ Marvel Backend is Running! Try /api/characters or POST to /api/comments</h1>');
-});
+console.log("🚀 Starting Marvel Backend...");
 
-// Firebase setup with improved private key handling
-let db;
+// Safe Firebase Initialization
+let db = null;
 try {
-  let privateKey = process.env.FIREBASE_PRIVATE_KEY || '';
-  privateKey = privateKey.replace(/\\n/g, '\n').trim();
+  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n').trim();
+
+  if (!process.env.FIREBASE_PROJECT_ID || 
+      !process.env.FIREBASE_CLIENT_EMAIL || 
+      !privateKey) {
+    throw new Error("Missing one or more Firebase environment variables");
+  }
 
   const serviceAccount = {
     projectId: process.env.FIREBASE_PROJECT_ID,
@@ -31,31 +33,53 @@ try {
   });
 
   db = admin.firestore();
-  console.log('✅ Firebase connected successfully');
+  console.log("✅ Firebase Admin SDK connected successfully");
 } catch (error) {
-  console.error('❌ Firebase init failed:', error.message);
+  console.error("❌ Firebase initialization FAILED:", error.message);
+  console.error("Please check your Environment Variables on Render");
 }
 
-// GET all characters (existing)
+// Routes
+app.get('/', (req, res) => {
+  res.send(`
+    <h1>Marvel Backend Status</h1>
+    <p>Firebase: ${db ? '✅ Connected' : '❌ Failed'}</p>
+    <p><a href="/api/characters">Test Characters</a></p>
+  `);
+});
+
 app.get('/api/characters', async (req, res) => {
-  if (!db) return res.status(500).json({ error: 'Database not connected' });
+  if (!db) return res.status(500).json({ error: 'Firebase not connected' });
   try {
     const snapshot = await db.collection('characters').get();
     const characters = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json(characters);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch characters' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
-// NEW: POST a new comment
+app.get('/api/comments', async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'Firebase not connected' });
+  const { characterName } = req.query;
+  try {
+    let query = db.collection('comments');
+    if (characterName) query = query.where('characterName', '==', characterName);
+    const snapshot = await query.get();
+    const comments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json(comments);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/comments', async (req, res) => {
-  if (!db) return res.status(500).json({ error: 'Database not connected' });
+  if (!db) return res.status(500).json({ error: 'Firebase not connected' });
 
   const { characterName, commentText, userName = "Anonymous" } = req.body;
 
   if (!characterName || !commentText) {
-    return res.status(400).json({ error: 'characterName and commentText are required' });
+    return res.status(400).json({ error: 'characterName and commentText required' });
   }
 
   try {
@@ -67,51 +91,15 @@ app.post('/api/comments', async (req, res) => {
     };
 
     const docRef = await db.collection('comments').add(commentData);
-    res.status(201).json({ success: true, id: docRef.id, message: 'Comment saved successfully!' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to save comment' });
+    console.log(`✅ Comment saved with ID: ${docRef.id}`);
+    res.json({ success: true, id: docRef.id });
+  } catch (e) {
+    console.error("Save error:", e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-// POST new comment - with better error handling
-app.post('/api/comments', async (req, res) => {
-  if (!db) {
-    console.error("❌ Database not initialized");
-    return res.status(500).json({ error: 'Database not connected' });
-  }
-
-  const { characterName, commentText, userName = "Anonymous" } = req.body;
-
-  console.log("Received comment:", { characterName, commentText, userName }); // For debugging
-
-  if (!characterName || !commentText) {
-    return res.status(400).json({ error: 'characterName and commentText are required' });
-  }
-
-  try {
-    const commentData = {
-      characterName: characterName.trim(),
-      userName: userName.trim(),
-      commentText: commentText.trim(),
-      timestamp: new Date().toISOString()
-    };
-
-    const docRef = await db.collection('comments').add(commentData);
-    
-    console.log(`✅ Comment saved successfully with ID: ${docRef.id}`);
-    
-    res.status(201).json({ 
-      success: true, 
-      id: docRef.id, 
-      message: 'Comment saved in Firebase!' 
-    });
-  } catch (error) {
-    console.error('❌ Error saving comment:', error.message);
-    res.status(500).json({ 
-      error: 'Failed to save comment in Firebase', 
-      details: error.message 
-    });
-  }
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
