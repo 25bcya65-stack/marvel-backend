@@ -75,6 +75,25 @@ app.post('/api/comments', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+// GET comments for a specific character
+app.get('/api/comments', async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'Database not connected' });
+
+  const { characterName } = req.query;
+
+  try {
+    let query = db.collection('comments');
+    if (characterName) {
+      query = query.where('characterName', '==', characterName);
+    }
+    const snapshot = await query.orderBy('timestamp', 'desc').get();
+    const comments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json(comments);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch comments' });
+  }
+});
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
